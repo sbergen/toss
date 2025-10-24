@@ -6,19 +6,45 @@ type Socket
 /// Address of a peer
 pub type Address {
   Hostname(String)
-  Ipv4(Int, Int, Int, Int)
-  Ipv6(Int, Int, Int, Int, Int, Int, Int, Int)
+  Ipv4Address(Int, Int, Int, Int)
+  Ipv6Address(Int, Int, Int, Int, Int, Int, Int, Int)
 }
 
+/// A UDP socket that can exchange data with a single peer only.
 pub opaque type SinglePeerSocket {
   SinglePeerSocket(socket: Socket)
 }
 
+/// A UDP socket that can exchange data with multiple peers.
 pub opaque type MultiPeerSocket {
   MultiPeerSocket(socket: Socket)
 }
 
-// TODO: Options?
+pub opaque type SocketOptions {
+  SocketOptions(local_port: Int, options: List(GenUdpOption))
+}
+
+/// Constructs the default options to open a socket with
+pub fn new(port port: Int) -> SocketOptions {
+  SocketOptions(port, [Mode(Binary), Active(passive())])
+}
+
+/// Opens the socket in IPv4 mode (which seems to be the default).
+/// You can not send to IPv6 addresses when opening a socket with this option.
+pub fn use_ipv4(options: SocketOptions) -> SocketOptions {
+  add_option(options, Inet)
+}
+
+/// Opens the socket in IPv6 mode.
+/// You can not send to IPv4 addresses when opening a socket with this option.
+pub fn use_ipv6(options: SocketOptions) -> SocketOptions {
+  add_option(options, Inet6)
+}
+
+fn add_option(options: SocketOptions, option: GenUdpOption) -> SocketOptions {
+  SocketOptions(..options, options: [option, ..options.options])
+}
+
 /// Opens a new UDP socket connected to the specified peer.
 /// Datagrams can only be sent to,
 /// and will only be received from the specified peer.
@@ -26,17 +52,29 @@ pub opaque type MultiPeerSocket {
 /// 0 can be used for the local port to let the OS automatically
 /// choose a free port.
 pub fn connect(
-  local_port local_port: Int,
-  host host: Address,
-  remote_port port: Int,
+  options: SocketOptions,
+  host: Address,
+  port port: Int,
 ) -> Result(SinglePeerSocket, Error) {
-  use socket <- result.try(open_socket(local_port))
+  use socket <- result.try(gen_udp_open(options.local_port, options.options))
   use _ <- result.map(connect_socket(socket, host, port))
   SinglePeerSocket(socket)
 }
 
-/// Returns the local port, if the socket was opened with port 0
+/// Closes a single-peer socket.
+pub fn disconnect(socket: SinglePeerSocket) -> Nil {
+  gen_udp_close(socket.socket)
+  Nil
+}
+
+/// Returns the local port, useful if the socket was opened with port 0
 pub fn local_port(socket: SinglePeerSocket) -> Result(Int, Nil) {
+  inet_port(socket.socket) |> result.replace_error(Nil)
+}
+
+/// Returns the local port the socket is listening to,
+/// useful if the socket was opened with port 0
+pub fn listening_port(socket: MultiPeerSocket) -> Result(Int, Nil) {
   inet_port(socket.socket) |> result.replace_error(Nil)
 }
 
@@ -45,14 +83,18 @@ pub fn send(socket: SinglePeerSocket, data: BitArray) -> Result(Nil, Error) {
   send_connected(socket.socket, data)
 }
 
-// TODO: Options?
 /// Opens a socket that can receive from and send to many peers.
-pub fn open(local_port: Int) -> Result(MultiPeerSocket, Error) {
-  use socket <- result.map(open_socket(local_port))
+pub fn open(options: SocketOptions) -> Result(MultiPeerSocket, Error) {
+  use socket <- result.map(open_socket(options))
   MultiPeerSocket(socket)
 }
 
-// TODO: different address schemes?
+/// Closes a multi-peer socket.
+pub fn close(socket: MultiPeerSocket) -> Nil {
+  gen_udp_close(socket.socket)
+  Nil
+}
+
 /// Sends a UDP datagram to the specified destination on a multi-peer socket.
 pub fn send_to(
   socket: MultiPeerSocket,
@@ -73,25 +115,28 @@ pub fn receive(
   data
 }
 
-/// Receives a UDP datagram from any source on a multi peer socket.
+/// Receives a UDP datagram from any source on a multi-peer socket.
 /// The source address, port, and the datagram are returned on success.
 /// The maximum length will affect memory allocation,
 /// so it should be selected conservatively.
+/// The address will be an error if the sender does not have a socket address,
+/// or the Erlang VM doesn't recognise the address. See:
+/// https://www.erlang.org/doc/apps/kernel/inet#t:returned_non_ip_address/0
 pub fn receive_any(
   socket: MultiPeerSocket,
   max_length max_length: Int,
   timeout_milliseconds timeout: Int,
-) -> Result(#(Address, Int, BitArray), Error) {
+) -> Result(#(Result(Address, Nil), Int, BitArray), Error) {
   recv(socket.socket, max_length, timeout)
 }
 
 // TODO: Add message based API
 
-fn open_socket(port: Int) -> Result(Socket, Error) {
-  gen_udp_open(port, [Mode(Binary), Active(passive())])
+fn open_socket(options: SocketOptions) -> Result(Socket, Error) {
+  gen_udp_open(options.local_port, options.options)
 }
 
-/// any() from Erlang
+/// any() from Erlang, or I don't care about the return value
 type Any
 
 type ModeValue {
@@ -103,6 +148,8 @@ type ActiveValue
 type GenUdpOption {
   Active(ActiveValue)
   Mode(ModeValue)
+  Inet
+  Inet6
 }
 
 @external(erlang, "inet", "port")
@@ -111,12 +158,15 @@ fn inet_port(socket: Socket) -> Result(Int, Any)
 @external(erlang, "gen_udp", "open")
 fn gen_udp_open(port: Int, opts: List(GenUdpOption)) -> Result(Socket, Error)
 
+@external(erlang, "gen_udp", "close")
+fn gen_udp_close(socket: Socket) -> Any
+
 @external(erlang, "toss_ffi", "recv")
 fn recv(
   socket: Socket,
   max_length: Int,
   timeout: Int,
-) -> Result(#(Address, Int, BitArray), Error)
+) -> Result(#(Result(Address, Nil), Int, BitArray), Error)
 
 @external(erlang, "toss_ffi", "connect")
 fn connect_socket(

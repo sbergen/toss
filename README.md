@@ -11,40 +11,39 @@ gleam add toss@1
 ```gleam
 import gleam/erlang/process
 import gleam/result
-import toss.{type MultiPeerSocket}
+import toss
 
 const port = 56_789
 
 pub fn main() {
-  process.spawn(echo_server)
+  process.spawn(fn() {
+    assert echo_once_server() == Ok(Nil)
+  })
 
   let assert Ok(socket) =
-    toss.connect(
-      local_port: 0,
-      host: toss.Hostname("localhost"),
-      remote_port: port,
-    )
+    toss.new(port: 0)
+    |> toss.connect(toss.Hostname("localhost"), port: port)
 
   let assert Ok(_) = toss.send(socket, <<"Hello, Joe!">>)
-  echo toss.receive(socket, 1024, 100) as "Received echo"
+  let assert Ok(response) = toss.receive(socket, 1024, 100)
+  echo response as "Received echo"
+
+  toss.disconnect(socket)
 }
 
-fn echo_server() -> Result(Nil, toss.Error) {
-  use socket <- result.try(toss.open(port))
-  let assert Ok(_) = echo_on_socket(socket)
-}
-
-fn echo_on_socket(socket: MultiPeerSocket) -> Result(Nil, toss.Error) {
+fn echo_once_server() -> Result(Nil, toss.Error) {
+  use socket <- result.try(toss.open(toss.new(port)))
   use #(address, port, data) <- result.try(toss.receive_any(
     socket,
     max_length: 1024,
     timeout_milliseconds: 10_000,
   ))
 
-  use _ <- result.try(toss.send_to(socket, address, port, data))
+  // Assume we got a know address
+  let assert Ok(address) = address
 
-  // Repeat via recursion:
-  echo_on_socket(socket)
+  use _ <- result.try(toss.send_to(socket, address, port, data))
+  Ok(toss.close(socket))
 }
 ```
 
