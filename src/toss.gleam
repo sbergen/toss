@@ -1,3 +1,5 @@
+//// Work with UDP sockets on the Erlang target.
+
 import gleam/dynamic.{type Dynamic}
 import gleam/erlang/atom
 import gleam/erlang/process
@@ -9,7 +11,7 @@ pub type Socket
 /// A handle to a socket,
 /// which can be used to send datagrams without specifying a destination.
 /// This type works as a token of proof that
-/// `connect` has been successfully called at least once.
+/// [`connect`](#connect) has been successfully called _at least once_.
 /// It is still tied to the underlying socket, and is not unique.
 pub type ConnectedSender
 
@@ -34,13 +36,13 @@ pub fn new(port port: Int) -> SocketOptions {
   SocketOptions(port, [Mode(Binary), Active(passive())])
 }
 
-/// Opens the socket in IPv4 mode (which seems to be the default).
+/// Specifies to open the socket in IPv4 mode.
 /// You can not send to IPv6 addresses when opening a socket with this option.
 pub fn use_ipv4(options: SocketOptions) -> SocketOptions {
   add_option(options, Inet)
 }
 
-/// Opens the socket in IPv6 mode.
+/// Specifies to open the socket in IPv6 mode.
 /// You can not send to IPv4 addresses when opening a socket with this option.
 pub fn use_ipv6(options: SocketOptions) -> SocketOptions {
   add_option(options, Inet6)
@@ -82,8 +84,9 @@ pub fn send_to(
 /// The maximum length will affect memory allocation,
 /// so it should be selected conservatively.
 /// The address will be an error if the sender does not have a socket address,
-/// or the Erlang VM doesn't recognise the address. See:
-/// https://www.erlang.org/doc/apps/kernel/inet#t:returned_non_ip_address/0
+/// or the Erlang VM
+/// [doesn't recognise the address](https://www.erlang.org/doc/apps/kernel/inet#t:returned_non_ip_address/0)
+/// (toss does currently not support local Unix domain sockets).
 @external(erlang, "toss_ffi", "recv")
 pub fn receive(
   socket: Socket,
@@ -93,7 +96,7 @@ pub fn receive(
 
 /// Modifies the socket to only receive data from the specified source.
 /// Other messages are discarded on arrival by the OS protocol stack.
-/// Returns a handle to the socket, 
+/// Returns a handle to the socket,
 /// which can be used to send data without specifying the destination every time.
 /// Note that multiple calls to `connect` will override any previous calls -
 /// all previously returned senders will also change behaviour.
@@ -104,7 +107,7 @@ pub fn connect(
   port port: Int,
 ) -> Result(ConnectedSender, Error)
 
-/// Sends data to the peer of a connected socket.
+/// Sends a UDP datagram to the peer of a connected socket.
 pub fn send(sender: ConnectedSender, data: BitArray) -> Result(Nil, Error) {
   send_connected(sender, data)
 }
@@ -122,11 +125,12 @@ pub type UdpMessage {
 }
 
 /// Configure a selector to receive messages from UDP sockets.
-/// You will also need to call `receive_next_datagram_as_message`
+/// You will also need to call
+/// [`receive_next_datagram_as_message`](#receive_next_datagram_as_message)
 /// to use the selector successfully - once initially,
-/// and again after receiving a message.
+/// and again after receiving each message.
 ///
-/// Note this will receive messages from all UDP sockets that the process controls,
+/// Note that this will receive messages from all UDP sockets that the process controls,
 /// rather than any specific one.
 /// If you wish to only handle messages from one socket then use one process per socket.
 pub fn select_udp_messages(
@@ -150,11 +154,11 @@ fn map_udp_message(mapper: fn(UdpMessage) -> a) -> fn(Dynamic) -> a {
 /// will be sent as an Erlang message to the socket owner's inbox.
 ///
 /// This is useful for when you wish to have an OTP actor handle incoming messages,
-/// as using the `receive` function would result in the actor being
+/// as using the [`receive`](#receive) function would result in the actor being
 /// blocked and unable to handle other messages while waiting for the next packet.
 ///
 /// Messages will be sent to the process that controls the socket,
-/// which is the process that established the socket with the `open` function.
+/// which is the process that established the socket with the [`open`](#open) function.
 ///
 /// In order to continue receiving messages,
 /// you will need to call this function again after receiving a message.
@@ -207,18 +211,17 @@ fn active_once() -> ActiveValue
 fn unsafe_decode(message: Dynamic) -> UdpMessage
 
 // Everything below is copied from mug by Louis Pilfold, Licensed under Apache-2.0,
-// with only a few error variants changed to work with UDP instead of TCP.
+// with only a few error variants and documentation changes to work with UDP instead of TCP.
 // https://github.com/lpil/mug
 
 /// Errors that can occur when working with UDP sockets.
 ///
-/// For more information on these errors see the Erlang documentation:
-/// - https://www.erlang.org/doc/man/file#type-posix
-/// - https://www.erlang.org/doc/man/inet#type-posix
-///
+/// For more information on these errors see the
+/// [Erlang documentation](https://www.erlang.org/doc/apps/kernel/inet#t:posix/0).
 pub type Error {
   /// Socket not owned by the process trying to use it.
-  /// This is documented as an error value in the `gen_udp` documentation,
+  /// This is documented as an error value in the
+  /// [`gen_udp` documentation](https://www.erlang.org/doc/apps/kernel/gen_udp.html),
   /// but it's unclear how to trigger it.
   NotOwner
   /// Operation timed out
