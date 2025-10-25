@@ -11,7 +11,7 @@ passive() ->
 connect(Socket, Address, Port) ->
   case gen_udp:connect(Socket, unmap_address(Address), Port) of
     ok ->
-      {ok, nil};
+      {ok, Socket};
     Error ->
       Error
   end.

@@ -1,7 +1,14 @@
 import gleam/result
 
-/// The Erlang type for FFI
-type Socket
+/// A UDP socket, used to send and receive UDP datagrams.
+pub type Socket
+
+/// A handle to a socket,
+/// which can be used to send datagrams without specifying a destination.
+/// This type works as a token of proof that
+/// `connect` has been successfully called at least once.
+/// It is still tied to the underlying socket, and is not unique.
+pub type ConnectedSender
 
 /// Address of a peer
 pub type Address {
@@ -10,21 +17,14 @@ pub type Address {
   Ipv6Address(Int, Int, Int, Int, Int, Int, Int, Int)
 }
 
-/// A UDP socket that can exchange data with a single peer only.
-pub opaque type SinglePeerSocket {
-  SinglePeerSocket(socket: Socket)
-}
-
-/// A UDP socket that can exchange data with multiple peers.
-pub opaque type MultiPeerSocket {
-  MultiPeerSocket(socket: Socket)
-}
-
+/// The set of options used to open a socket
 pub opaque type SocketOptions {
   SocketOptions(local_port: Int, options: List(GenUdpOption))
 }
 
-/// Constructs the default options to open a socket with
+/// Constructs the default options to open a socket with,
+/// binding it to the given local port.
+/// 0 can be used to let the OS automatically choose a free port.
 pub fn new(port port: Int) -> SocketOptions {
   SocketOptions(port, [Mode(Binary), Active(passive())])
 }
@@ -45,96 +45,68 @@ fn add_option(options: SocketOptions, option: GenUdpOption) -> SocketOptions {
   SocketOptions(..options, options: [option, ..options.options])
 }
 
-/// Opens a new UDP socket connected to the specified peer.
-/// Datagrams can only be sent to,
-/// and will only be received from the specified peer.
-/// The socket and the local port number are returned.
-/// 0 can be used for the local port to let the OS automatically
-/// choose a free port.
-pub fn connect(
-  options: SocketOptions,
-  host: Address,
-  port port: Int,
-) -> Result(SinglePeerSocket, Error) {
-  use socket <- result.try(gen_udp_open(options.local_port, options.options))
-  use _ <- result.map(connect_socket(socket, host, port))
-  SinglePeerSocket(socket)
+/// Opens a UDP socket.
+/// When freshly opened, the socket will receive data from any source.
+pub fn open(options: SocketOptions) -> Result(Socket, Error) {
+  gen_udp_open(options.local_port, options.options)
 }
 
-/// Closes a single-peer socket.
-pub fn disconnect(socket: SinglePeerSocket) -> Nil {
-  gen_udp_close(socket.socket)
+/// Closes the socket, freeing up any resources it uses.
+/// The socket and any associated senders can no longer be used after this.
+pub fn close(socket: Socket) -> Nil {
+  gen_udp_close(socket)
   Nil
 }
 
 /// Returns the local port, useful if the socket was opened with port 0
-pub fn local_port(socket: SinglePeerSocket) -> Result(Int, Nil) {
-  inet_port(socket.socket) |> result.replace_error(Nil)
+pub fn local_port(socket: Socket) -> Result(Int, Nil) {
+  inet_port(socket) |> result.replace_error(Nil)
 }
 
-/// Returns the local port the socket is listening to,
-/// useful if the socket was opened with port 0
-pub fn listening_port(socket: MultiPeerSocket) -> Result(Int, Nil) {
-  inet_port(socket.socket) |> result.replace_error(Nil)
-}
-
-/// Sends data to the peer of a connected socket
-pub fn send(socket: SinglePeerSocket, data: BitArray) -> Result(Nil, Error) {
-  send_connected(socket.socket, data)
-}
-
-/// Opens a socket that can receive from and send to many peers.
-pub fn open(options: SocketOptions) -> Result(MultiPeerSocket, Error) {
-  use socket <- result.map(open_socket(options))
-  MultiPeerSocket(socket)
-}
-
-/// Closes a multi-peer socket.
-pub fn close(socket: MultiPeerSocket) -> Nil {
-  gen_udp_close(socket.socket)
-  Nil
-}
-
-/// Sends a UDP datagram to the specified destination on a multi-peer socket.
+/// Sends a UDP datagram to the specified destination.
+@external(erlang, "toss_ffi", "send")
 pub fn send_to(
-  socket: MultiPeerSocket,
-  address: Address,
+  socket: Socket,
+  host: Address,
   port: Int,
   data: BitArray,
-) -> Result(Nil, Error) {
-  send_unconnected(socket.socket, address, port, data)
-}
+) -> Result(Nil, Error)
 
-/// Receives a UDP datagram from the connected peer.
-pub fn receive(
-  socket: SinglePeerSocket,
-  max_length: Int,
-  timeout: Int,
-) -> Result(BitArray, Error) {
-  use #(_, _, data) <- result.map(recv(socket.socket, max_length, timeout))
-  data
-}
-
-/// Receives a UDP datagram from any source on a multi-peer socket.
+/// Receives a UDP datagram from the socket.
 /// The source address, port, and the datagram are returned on success.
 /// The maximum length will affect memory allocation,
 /// so it should be selected conservatively.
 /// The address will be an error if the sender does not have a socket address,
 /// or the Erlang VM doesn't recognise the address. See:
 /// https://www.erlang.org/doc/apps/kernel/inet#t:returned_non_ip_address/0
-pub fn receive_any(
-  socket: MultiPeerSocket,
+@external(erlang, "toss_ffi", "recv")
+pub fn receive(
+  socket: Socket,
   max_length max_length: Int,
   timeout_milliseconds timeout: Int,
-) -> Result(#(Result(Address, Nil), Int, BitArray), Error) {
-  recv(socket.socket, max_length, timeout)
+) -> Result(#(Result(Address, Nil), Int, BitArray), Error)
+
+/// Modifies the socket to only receive data from the specified source.
+/// Other messages are discarded on arrival by the OS protocol stack.
+/// Returns a handle to the socket, 
+/// which can be used to send data without specifying the destination every time.
+/// Note that multiple calls to `connect` will override any previous calls -
+/// all previously returned senders will also change behaviour.
+@external(erlang, "toss_ffi", "connect")
+pub fn connect(
+  socket: Socket,
+  host: Address,
+  port port: Int,
+) -> Result(ConnectedSender, Error)
+
+/// Sends data to the peer of a connected socket.
+pub fn send(sender: ConnectedSender, data: BitArray) -> Result(Nil, Error) {
+  send_connected(sender, data)
 }
 
-// TODO: Add message based API
-
-fn open_socket(options: SocketOptions) -> Result(Socket, Error) {
-  gen_udp_open(options.local_port, options.options)
-}
+/// Messages that can be sent by the socket to the process that controls it.
+//pub type UdpMessage
+//Datagram(
 
 /// any() from Erlang, or I don't care about the return value
 type Any
@@ -161,30 +133,8 @@ fn gen_udp_open(port: Int, opts: List(GenUdpOption)) -> Result(Socket, Error)
 @external(erlang, "gen_udp", "close")
 fn gen_udp_close(socket: Socket) -> Any
 
-@external(erlang, "toss_ffi", "recv")
-fn recv(
-  socket: Socket,
-  max_length: Int,
-  timeout: Int,
-) -> Result(#(Result(Address, Nil), Int, BitArray), Error)
-
-@external(erlang, "toss_ffi", "connect")
-fn connect_socket(
-  socket: Socket,
-  host: Address,
-  port: Int,
-) -> Result(Nil, Error)
-
 @external(erlang, "toss_ffi", "send")
-fn send_connected(socket: Socket, data: BitArray) -> Result(Nil, Error)
-
-@external(erlang, "toss_ffi", "send")
-fn send_unconnected(
-  socket: Socket,
-  host: Address,
-  port: Int,
-  data: BitArray,
-) -> Result(Nil, Error)
+fn send_connected(socket: ConnectedSender, data: BitArray) -> Result(Nil, Error)
 
 @external(erlang, "toss_ffi", "passive")
 fn passive() -> ActiveValue

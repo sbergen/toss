@@ -20,20 +20,22 @@ pub fn main() {
     assert echo_once_server() == Ok(Nil)
   })
 
-  let assert Ok(socket) =
-    toss.new(port: 0)
-    |> toss.connect(toss.Hostname("localhost"), port: port)
+  let assert Ok(socket) = toss.open(toss.new(port: 0))
 
-  let assert Ok(_) = toss.send(socket, <<"Hello, Joe!">>)
-  let assert Ok(response) = toss.receive(socket, 1024, 100)
+  // Only receive data from the specific host
+  let assert Ok(sender) =
+    toss.connect(socket, toss.Hostname("localhost"), port: port)
+
+  let assert Ok(_) = toss.send(sender, <<"Hello, Joe!">>)
+  let assert Ok(#(_, _, response)) = toss.receive(socket, 1024, 100)
   echo response as "Received echo"
 
-  toss.disconnect(socket)
+  toss.close(socket)
 }
 
 fn echo_once_server() -> Result(Nil, toss.Error) {
   use socket <- result.try(toss.open(toss.new(port)))
-  use #(address, port, data) <- result.try(toss.receive_any(
+  use #(address, port, data) <- result.try(toss.receive(
     socket,
     max_length: 1024,
     timeout_milliseconds: 10_000,
