@@ -108,9 +108,8 @@ pub fn connect(
 ) -> Result(ConnectedSender, Error)
 
 /// Sends a UDP datagram to the peer of a connected socket.
-pub fn send(sender: ConnectedSender, data: BitArray) -> Result(Nil, Error) {
-  send_connected(sender, data)
-}
+@external(erlang, "toss_ffi", "send")
+pub fn send(sender: ConnectedSender, data: BitArray) -> Result(Nil, Error)
 
 /// Messages that can be sent by the socket to the process that controls it.
 pub type UdpMessage {
@@ -140,13 +139,11 @@ pub fn select_udp_messages(
   let udp = atom.create("udp")
   let error = atom.create("udp_error")
 
-  selector
-  |> process.select_record(udp, 4, map_udp_message(mapper))
-  |> process.select_record(error, 2, map_udp_message(mapper))
-}
+  let map = fn(message) { mapper(unsafe_decode(message)) }
 
-fn map_udp_message(mapper: fn(UdpMessage) -> a) -> fn(Dynamic) -> a {
-  fn(message) { mapper(unsafe_decode(message)) }
+  selector
+  |> process.select_record(udp, 4, map)
+  |> process.select_record(error, 2, map)
 }
 
 /// Switch the socket to active (once) mode,
@@ -197,9 +194,6 @@ fn gen_udp_open(port: Int, opts: List(GenUdpOption)) -> Result(Socket, Error)
 
 @external(erlang, "gen_udp", "close")
 fn gen_udp_close(socket: Socket) -> Any
-
-@external(erlang, "toss_ffi", "send")
-fn send_connected(socket: ConnectedSender, data: BitArray) -> Result(Nil, Error)
 
 @external(erlang, "toss_ffi", "passive")
 fn passive() -> ActiveValue
