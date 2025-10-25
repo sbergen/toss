@@ -3,6 +3,9 @@
 -export([active_once/0, passive/0, connect/3, recv/2, recv/3, send/2, send/4,
          map_udp_message/1]).
 
+% Enable inlining, as all the functions are very small.
+-compile(inline).
+
 active_once() ->
   once.
 
