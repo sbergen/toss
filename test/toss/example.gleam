@@ -6,7 +6,7 @@ const port = 56_789
 
 pub fn main() {
   process.spawn(fn() {
-    assert echo_once_server() == Ok(Nil)
+    let assert Ok(Nil) = echo_once_server()
   })
 
   // Open a IPv4 socket on an OS-assigned (ephemeral) port.
