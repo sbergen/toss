@@ -94,6 +94,14 @@ pub fn receive(
   timeout_milliseconds timeout: Int,
 ) -> Result(#(Result(Address, Nil), Int, BitArray), Error)
 
+/// Receives a UDP datagram from the socket, without a timeout.
+/// See [`receive`](#receive) for details.
+@external(erlang, "toss_ffi", "recv")
+pub fn receive_forever(
+  socket: Socket,
+  max_length max_length: Int,
+) -> Result(#(Result(Address, Nil), Int, BitArray), Error)
+
 /// Modifies the socket to only receive data from the specified source.
 /// Other messages are discarded on arrival by the OS protocol stack.
 /// Returns a handle to the socket,

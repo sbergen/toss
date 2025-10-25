@@ -65,6 +65,33 @@ pub fn ipv4_hostname_test() {
   toss.close(send_socket)
 }
 
+pub fn receive_timeout_test() {
+  let #(socket, port) = open(function.identity)
+  let assert Ok(_) = toss.connect(socket, Hostname("localhost"), port)
+
+  let assert Error(toss.Timeout) = toss.receive(socket, 100, 1)
+
+  toss.close(socket)
+}
+
+pub fn receive_forever_test() {
+  let #(rcv_socket, port) = open(function.identity)
+  let assert Ok(send_socket) =
+    toss.new(0)
+    |> toss.open
+  let assert Ok(sender) = toss.connect(send_socket, Hostname("localhost"), port)
+
+  assert toss.send(sender, <<1>>) == Ok(Nil)
+  let assert Ok(#(address, port, data)) = toss.receive_forever(rcv_socket, 100)
+
+  let assert Ok(Ipv4Address(_, _, _, _)) = address
+  assert Ok(port) == toss.local_port(send_socket)
+  assert data == <<1>>
+
+  toss.close(rcv_socket)
+  toss.close(send_socket)
+}
+
 // Tests my assumptions and also error handling
 // (Also: Yoshi, the IP can't be just an Int :P)
 pub fn ipv4_over_ipv6_test() {

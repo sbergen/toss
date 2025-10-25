@@ -1,6 +1,7 @@
 -module(toss_ffi).
 
--export([active_once/0, passive/0, connect/3, recv/3, send/2, send/4, map_udp_message/1]).
+-export([active_once/0, passive/0, connect/3, recv/2, recv/3, send/2, send/4,
+         map_udp_message/1]).
 
 active_once() ->
   once.
@@ -17,7 +18,13 @@ connect(Socket, Address, Port) ->
   end.
 
 recv(Socket, Length, Timeout) ->
-  case gen_udp:recv(Socket, Length, Timeout) of
+  map_recv_result(gen_udp:recv(Socket, Length, Timeout)).
+
+recv(Socket, Length) ->
+  map_recv_result(gen_udp:recv(Socket, Length)).
+
+map_recv_result(Result) ->
+  case Result of
     {ok, {Address, Port, Data}} ->
       {ok, {map_address(Address), Port, Data}};
     Error ->
@@ -25,15 +32,13 @@ recv(Socket, Length, Timeout) ->
   end.
 
 send(Socket, Data) ->
-  case gen_udp:send(Socket, Data) of
-    ok ->
-      {ok, nil};
-    Error ->
-      Error
-  end.
+  map_send_result(gen_udp:send(Socket, Data)).
 
 send(Socket, Address, Port, Data) ->
-  case gen_udp:send(Socket, unmap_address(Address), Port, Data) of
+  map_send_result(gen_udp:send(Socket, unmap_address(Address), Port, Data)).
+
+map_send_result(Result) ->
+  case Result of
     ok ->
       {ok, nil};
     Error ->
