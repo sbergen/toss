@@ -1,5 +1,7 @@
 import checkmark
 import envoy
+import gleam/erlang/process
+import gleam/function
 import gleeunit
 import simplifile
 import toss.{type Socket, type SocketOptions, Hostname, Ipv4Address, Ipv6Address}
@@ -78,6 +80,39 @@ pub fn ipv4_over_ipv6_test() {
     toss.send_to(socket, Ipv4Address(0, 0, 0, 1), 42, <<>>)
 
   toss.close(socket)
+}
+
+pub fn message_test() {
+  let #(rcv_socket, port) = open(function.identity)
+  let assert Ok(send_socket) = toss.new(0) |> toss.open
+  let assert Ok(sender) = toss.connect(send_socket, Hostname("localhost"), port)
+  let assert Ok(send_port) = toss.local_port(send_socket)
+
+  let selector =
+    toss.select_udp_messages(process.new_selector(), function.identity)
+  toss.receive_next_datagram_as_message(rcv_socket)
+
+  assert toss.send(sender, <<1>>) == Ok(Nil)
+  assert toss.send(sender, <<2>>) == Ok(Nil)
+
+  // Receive first datagram
+  let assert Ok(msg) = process.selector_receive(selector, 1)
+  let assert toss.Datagram(socket, address, port, data) = msg
+  assert socket == rcv_socket
+  let assert Ok(Ipv4Address(_, _, _, _)) = address
+  assert port == send_port
+  assert data == <<1>>
+
+  // The next one shouldn't be received until calling receive_next...
+  let assert Error(Nil) = process.selector_receive(selector, 1)
+
+  // Receive the second datagram
+  toss.receive_next_datagram_as_message(rcv_socket)
+  let assert Ok(msg) = process.selector_receive(selector, 1)
+  let assert toss.Datagram(_, _, _, <<2>>) = msg
+
+  toss.close(rcv_socket)
+  toss.close(send_socket)
 }
 
 fn open(set_opts: fn(SocketOptions) -> SocketOptions) -> #(Socket, Int) {

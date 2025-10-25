@@ -1,3 +1,6 @@
+import gleam/dynamic.{type Dynamic}
+import gleam/erlang/atom
+import gleam/erlang/process
 import gleam/result
 
 /// A UDP socket, used to send and receive UDP datagrams.
@@ -17,7 +20,9 @@ pub type Address {
   Ipv6Address(Int, Int, Int, Int, Int, Int, Int, Int)
 }
 
-/// The set of options used to open a socket
+/// The set of options used to open a socket.
+/// (Mostly serves forward compatibility purposes at the moment,
+/// as only the port and IP version can be specified.)
 pub opaque type SocketOptions {
   SocketOptions(local_port: Int, options: List(GenUdpOption))
 }
@@ -105,8 +110,61 @@ pub fn send(sender: ConnectedSender, data: BitArray) -> Result(Nil, Error) {
 }
 
 /// Messages that can be sent by the socket to the process that controls it.
-//pub type UdpMessage
-//Datagram(
+pub type UdpMessage {
+  /// An incoming UDP datagram
+  Datagram(
+    socket: Socket,
+    host: Result(Address, Nil),
+    peer_port: Int,
+    data: BitArray,
+  )
+  UdpError(Socket, Error)
+}
+
+/// Configure a selector to receive messages from UDP sockets.
+/// You will also need to call `receive_next_datagram_as_message`
+/// to use the selector successfully - once initially,
+/// and again after receiving a message.
+///
+/// Note this will receive messages from all UDP sockets that the process controls,
+/// rather than any specific one.
+/// If you wish to only handle messages from one socket then use one process per socket.
+pub fn select_udp_messages(
+  selector: process.Selector(a),
+  mapper: fn(UdpMessage) -> a,
+) -> process.Selector(a) {
+  let udp = atom.create("udp")
+  let error = atom.create("udp_error")
+
+  selector
+  |> process.select_record(udp, 4, map_udp_message(mapper))
+  |> process.select_record(error, 2, map_udp_message(mapper))
+}
+
+fn map_udp_message(mapper: fn(UdpMessage) -> a) -> fn(Dynamic) -> a {
+  fn(message) { mapper(unsafe_decode(message)) }
+}
+
+/// Switch the socket to active (once) mode,
+/// meaning that the next datagram received on the socket
+/// will be sent as an Erlang message to the socket owner's inbox.
+///
+/// This is useful for when you wish to have an OTP actor handle incoming messages,
+/// as using the `receive` function would result in the actor being
+/// blocked and unable to handle other messages while waiting for the next packet.
+///
+/// Messages will be sent to the process that controls the socket,
+/// which is the process that established the socket with the `open` function.
+///
+/// In order to continue receiving messages,
+/// you will need to call this function again after receiving a message.
+/// This is intended to provide backpressure to the OS socket,
+/// instead of flooding the inbox on the Erlang side,
+/// which could happen if switching to full active mode.
+pub fn receive_next_datagram_as_message(socket: Socket) -> Nil {
+  set_socket_options(socket, [Active(active_once())])
+  Nil
+}
 
 /// any() from Erlang, or I don't care about the return value
 type Any
@@ -123,6 +181,9 @@ type GenUdpOption {
   Inet
   Inet6
 }
+
+@external(erlang, "inet", "setopts")
+fn set_socket_options(socket: Socket, options: List(GenUdpOption)) -> Any
 
 @external(erlang, "inet", "port")
 fn inet_port(socket: Socket) -> Result(Int, Any)
@@ -142,7 +203,11 @@ fn passive() -> ActiveValue
 @external(erlang, "toss_ffi", "active_once")
 fn active_once() -> ActiveValue
 
-// Everything below is copied from mug by Louis Pilfold, Licensed under Apache-2.0
+@external(erlang, "toss_ffi", "map_udp_message")
+fn unsafe_decode(message: Dynamic) -> UdpMessage
+
+// Everything below is copied from mug by Louis Pilfold, Licensed under Apache-2.0,
+// with only a few error variants changed to work with UDP instead of TCP.
 // https://github.com/lpil/mug
 
 /// Errors that can occur when working with UDP sockets.
@@ -152,11 +217,13 @@ fn active_once() -> ActiveValue
 /// - https://www.erlang.org/doc/man/inet#type-posix
 ///
 pub type Error {
-  // https://www.erlang.org/doc/man/inet#type-posix
-  /// Connection closed
-  Closed
+  /// Socket not owned by the process trying to use it.
+  /// This is documented as an error value in the `gen_udp` documentation,
+  /// but it's unclear how to trigger it.
+  NotOwner
   /// Operation timed out
   Timeout
+  // https://www.erlang.org/doc/maninet#type-posix
   /// Address already in use
   Eaddrinuse
   /// Cannot assign requested address
@@ -317,7 +384,7 @@ pub type Error {
 ///
 pub fn describe_error(error: Error) -> String {
   case error {
-    Closed -> "Connection closed"
+    NotOwner -> "Socket not owned by the process trying to use it"
     Timeout -> "Operation timed out"
     Eaddrinuse -> "Address already in use"
     Eaddrnotavail -> "Cannot assign requested address"

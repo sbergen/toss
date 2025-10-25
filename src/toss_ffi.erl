@@ -1,6 +1,6 @@
 -module(toss_ffi).
 
--export([active_once/0, passive/0, connect/3, recv/3, send/2, send/4]).
+-export([active_once/0, passive/0, connect/3, recv/3, send/2, send/4, map_udp_message/1]).
 
 active_once() ->
   once.
@@ -55,3 +55,8 @@ unmap_address({ipv4_address, O1, O2, O3, O4}) ->
   {O1, O2, O3, O4};
 unmap_address({ipv6_address, W1, W2, W3, W4, W5, W6, W7, W8}) ->
   {W1, W2, W3, W4, W5, W6, W7, W8}.
+
+map_udp_message({udp, Socket, Address, Port, Data}) ->
+  {datagram, Socket, map_address(Address), Port, Data};
+map_udp_message({udp_error, Socket, Error}) ->
+  {udp_error, Socket, Error}.
