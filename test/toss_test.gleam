@@ -64,6 +64,7 @@ pub fn ipv4_hostname_test() {
 }
 
 // Tests my assumptions and also error handling
+// (Also: Yoshi, the IP can't be just an Int :P)
 pub fn ipv4_over_ipv6_test() {
   let assert Ok(socket) =
     toss.new(0)
@@ -71,10 +72,10 @@ pub fn ipv4_over_ipv6_test() {
     |> toss.open
 
   let assert Error(toss.Eafnosupport) =
-    toss.connect(socket, Ipv4Address(127, 0, 0, 1), 42)
+    toss.connect(socket, Ipv4Address(0, 0, 0, 1), 42)
 
   let assert Error(toss.Eafnosupport) =
-    toss.send_to(socket, Ipv4Address(127, 0, 0, 1), 42, <<>>)
+    toss.send_to(socket, Ipv4Address(0, 0, 0, 1), 42, <<>>)
 
   toss.close(socket)
 }
