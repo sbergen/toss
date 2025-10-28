@@ -7,7 +7,7 @@ A UDP socket library for Gleam on Erlang
 (wraps [`gen_udp`](https://www.erlang.org/doc/apps/kernel/gen_udp.html)).
 
 ```sh
-gleam add toss@1
+gleam add toss@1.0.0-rc1
 ```
 ```gleam
 import gleam/erlang/process
