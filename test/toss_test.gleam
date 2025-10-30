@@ -30,6 +30,28 @@ pub fn check_example_test() {
     == Ok(Nil)
 }
 
+pub fn ip_to_string_test() {
+  assert toss.ip_to_string(Ipv4Address(1, 2, 3, 4)) == "1.2.3.4"
+  assert toss.ip_to_string(Ipv6Address(
+      0x01,
+      0x23,
+      0x45,
+      0x67,
+      0x89,
+      0xab,
+      0xcd,
+      0xef,
+    ))
+    == "1:23:45:67:89:ab:cd:ef"
+}
+
+pub fn parse_ip() {
+  assert toss.prase_ip("1.2.3.4") == Ok(Ipv4Address(1, 2, 3, 4))
+  assert toss.prase_ip("1:23:45:67:89:ab:cd:ef")
+    == Ok(Ipv6Address(0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef))
+  assert toss.prase_ip("not-an-ip") == Error(Nil)
+}
+
 pub fn ipv6_hostname_test() {
   let #(rcv_socket, port) = open(toss.use_ipv6)
   let assert Ok(send_socket) =

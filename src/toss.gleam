@@ -21,6 +21,14 @@ pub type IpAddress {
   Ipv6Address(Int, Int, Int, Int, Int, Int, Int, Int)
 }
 
+/// Converts an IP address to a string.
+@external(erlang, "toss_ffi", "ip_to_string")
+pub fn ip_to_string(ip: IpAddress) -> String
+
+/// Tries to parse an IP address from a string.
+@external(erlang, "toss_ffi", "parse_ip")
+pub fn prase_ip(address: String) -> Result(IpAddress, Nil)
+
 /// The set of options used to open a socket.
 /// (Mostly serves forward compatibility purposes at the moment,
 /// as only the port and IP version can be specified.)
