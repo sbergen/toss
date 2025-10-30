@@ -50,7 +50,10 @@ pub fn use_ipv4(options: SocketOptions) -> SocketOptions {
 }
 
 /// Specifies to open the socket in IPv6 mode.
-/// You can not send to IPv4 addresses when opening a socket with this option.
+/// On dual stack systems,
+/// you can send to IPv4-mapped IPv6 addresses,
+/// and respectively datagrams received from IPv4 addresses will
+/// have an address in the IPv4-mapped format.
 pub fn use_ipv6(options: SocketOptions) -> SocketOptions {
   add_option(options, Inet6)
 }
@@ -132,6 +135,8 @@ pub fn connect_to(
 ) -> Result(ConnectedSender, Error)
 
 /// Like `connect_to`, but uses a host name instead of an IP address.
+/// If you have an IP address as a string,
+/// convert it first using `parse_ip`, and use `connect_to`.
 @external(erlang, "toss_ffi", "connect")
 pub fn connect_to_host(
   socket: Socket,
