@@ -45,7 +45,7 @@ pub fn ip_to_string_test() {
     == "1:23:45:67:89:ab:cd:ef"
 }
 
-pub fn parse_ip() {
+pub fn parse_ip_test() {
   assert toss.prase_ip("1.2.3.4") == Ok(Ipv4Address(1, 2, 3, 4))
   assert toss.prase_ip("1:23:45:67:89:ab:cd:ef")
     == Ok(Ipv6Address(0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef))
@@ -143,6 +143,45 @@ pub fn recieve_ipv4_over_ipv6_test() {
   let assert Ipv6Address(0, 0, 0, 0, 0, 0xFFFF, high, low) = address
   assert high == int.bitwise_shift_left(127, 8)
   assert low == 1
+}
+
+pub fn multicast_test() {
+  let mcast_addr = Ipv4Address(224, 0, 0, 42)
+
+  let apply_options = fn(opts) {
+    toss.reuse_address(opts)
+    |> toss.using_interface(mcast_addr)
+  }
+
+  let #(rcv_socket, port) = open(apply_options)
+  assert toss.join_multicast_group(
+      rcv_socket,
+      mcast_addr,
+      Ipv4Address(0, 0, 0, 0),
+    )
+    == Ok(Nil)
+
+  let assert Ok(send_socket) =
+    toss.new(port)
+    |> apply_options
+    |> toss.open
+
+  assert toss.send_to(send_socket, mcast_addr, port, <<"hi!">>) == Ok(Nil)
+  let assert Ok(#(_, _, <<"hi!">>)) = toss.receive(rcv_socket, 8, 10)
+
+  assert toss.leave_multicast_group(
+      rcv_socket,
+      mcast_addr,
+      Ipv4Address(0, 0, 0, 0),
+    )
+    == Ok(Nil)
+
+  assert toss.send_to(send_socket, mcast_addr, port, <<"hi!">>) == Ok(Nil)
+  let assert Error(toss.Timeout) = toss.receive(rcv_socket, 8, 10)
+    as "We've left the multicast group"
+
+  toss.close(rcv_socket)
+  toss.close(send_socket)
 }
 
 pub fn message_test() {

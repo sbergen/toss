@@ -1,7 +1,7 @@
 -module(toss_ffi).
 
 -export([active_once/0, passive/0, connect/3, recv/2, recv/3, send/2, send/4,
-         map_udp_message/1, ip_to_string/1, parse_ip/1]).
+         map_udp_message/1, ip_to_string/1, parse_ip/1, from_gleam_address/1, setopts/2]).
 
 % Enable inlining, as all the functions are very small.
 -compile(inline).
@@ -24,6 +24,14 @@ active_once() ->
 
 passive() ->
   false.
+
+setopts(Socket, Opts) ->
+  case inet:setopts(Socket, Opts) of
+    ok ->
+      {ok, nil};
+    Error ->
+      Error
+  end.
 
 connect(Socket, Address, Port) ->
   case gen_udp:connect(Socket, from_gleam_address(Address), Port) of

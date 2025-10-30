@@ -58,6 +58,18 @@ pub fn use_ipv6(options: SocketOptions) -> SocketOptions {
   add_option(options, Inet6)
 }
 
+pub fn using_interface(options: SocketOptions, ip: IpAddress) -> SocketOptions {
+  add_option(options, Ip(to_erlang_ip(ip)))
+}
+
+/// Allows reusing an already open local address and port
+/// Otherwise, an error will be returned from `open`,
+/// if a socket on the port is already open.
+pub fn reuse_address(options: SocketOptions) -> SocketOptions {
+  // On Windows, both of the options are required:
+  options |> add_option(Reuseaddr(True)) |> add_option(Reuseport(True))
+}
+
 fn add_option(options: SocketOptions, option: GenUdpOption) -> SocketOptions {
   SocketOptions(..options, options: [option, ..options.options])
 }
@@ -78,6 +90,32 @@ pub fn close(socket: Socket) -> Nil {
 /// Returns the local port, useful if the socket was opened with port 0
 pub fn local_port(socket: Socket) -> Result(Int, Nil) {
   inet_port(socket) |> result.replace_error(Nil)
+}
+
+pub fn join_multicast_group(
+  socket: Socket,
+  multicast_address: IpAddress,
+  interface_address: IpAddress,
+) -> Result(Nil, Error) {
+  set_socket_options(socket, [
+    AddMembership(#(
+      to_erlang_ip(multicast_address),
+      to_erlang_ip(interface_address),
+    )),
+  ])
+}
+
+pub fn leave_multicast_group(
+  socket: Socket,
+  multicast_address: IpAddress,
+  interface_address: IpAddress,
+) -> Result(Nil, Error) {
+  set_socket_options(socket, [
+    DropMembership(#(
+      to_erlang_ip(multicast_address),
+      to_erlang_ip(interface_address),
+    )),
+  ])
 }
 
 /// Sends a UDP datagram to the specified destination by IP address.
@@ -213,15 +251,26 @@ type ModeValue {
 
 type ActiveValue
 
+/// A native Erlang IP address tuple
+type InetAddress
+
 type GenUdpOption {
   Active(ActiveValue)
   Mode(ModeValue)
+  Reuseaddr(Bool)
+  Reuseport(Bool)
+  AddMembership(#(InetAddress, InetAddress))
+  DropMembership(#(InetAddress, InetAddress))
+  Ip(InetAddress)
   Inet
   Inet6
 }
 
-@external(erlang, "inet", "setopts")
-fn set_socket_options(socket: Socket, options: List(GenUdpOption)) -> Any
+@external(erlang, "toss_ffi", "setopts")
+fn set_socket_options(
+  socket: Socket,
+  options: List(GenUdpOption),
+) -> Result(Nil, Error)
 
 @external(erlang, "inet", "port")
 fn inet_port(socket: Socket) -> Result(Int, Any)
@@ -231,6 +280,9 @@ fn gen_udp_open(port: Int, opts: List(GenUdpOption)) -> Result(Socket, Error)
 
 @external(erlang, "gen_udp", "close")
 fn gen_udp_close(socket: Socket) -> Any
+
+@external(erlang, "toss_ffi", "from_gleam_address")
+fn to_erlang_ip(ip: IpAddress) -> InetAddress
 
 @external(erlang, "toss_ffi", "passive")
 fn passive() -> ActiveValue
