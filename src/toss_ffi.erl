@@ -13,7 +13,7 @@ passive() ->
   false.
 
 connect(Socket, Address, Port) ->
-  case gen_udp:connect(Socket, unmap_address(Address), Port) of
+  case gen_udp:connect(Socket, from_gleam_address(Address), Port) of
     ok ->
       {ok, Socket};
     Error ->
@@ -29,7 +29,7 @@ recv(Socket, Length) ->
 map_recv_result(Result) ->
   case Result of
     {ok, {Address, Port, Data}} ->
-      {ok, {map_address(Address), Port, Data}};
+      {ok, {to_gleam_address(Address), Port, Data}};
     Error ->
       Error
   end.
@@ -38,7 +38,7 @@ send(Socket, Data) ->
   map_send_result(gen_udp:send(Socket, Data)).
 
 send(Socket, Address, Port, Data) ->
-  map_send_result(gen_udp:send(Socket, unmap_address(Address), Port, Data)).
+  map_send_result(gen_udp:send(Socket, from_gleam_address(Address), Port, Data)).
 
 map_send_result(Result) ->
   case Result of
@@ -48,23 +48,23 @@ map_send_result(Result) ->
       Error
   end.
 
-map_address(Address) when is_list(Address) ->
-  {ok, {hostname, unicode:characters_to_binary(Address)}};
-map_address({O1, O2, O3, O4}) ->
+to_gleam_address(Address) when is_list(Address) ->
+  {ok, unicode:characters_to_binary(Address)};
+to_gleam_address({O1, O2, O3, O4}) ->
   {ok, {ipv4_address, O1, O2, O3, O4}};
-map_address({W1, W2, W3, W4, W5, W6, W7, W8}) ->
+to_gleam_address({W1, W2, W3, W4, W5, W6, W7, W8}) ->
   {ok, {ipv6_address, W1, W2, W3, W4, W5, W6, W7, W8}};
-map_address(_) ->
+to_gleam_address(_) ->
   {error, nil}.
 
-unmap_address({hostname, Binary}) ->
-  unicode:characters_to_list(Binary);
-unmap_address({ipv4_address, O1, O2, O3, O4}) ->
+from_gleam_address(Hostname) when is_binary(Hostname) ->
+  unicode:characters_to_list(Hostname);
+from_gleam_address({ipv4_address, O1, O2, O3, O4}) ->
   {O1, O2, O3, O4};
-unmap_address({ipv6_address, W1, W2, W3, W4, W5, W6, W7, W8}) ->
+from_gleam_address({ipv6_address, W1, W2, W3, W4, W5, W6, W7, W8}) ->
   {W1, W2, W3, W4, W5, W6, W7, W8}.
 
 map_udp_message({udp, Socket, Address, Port, Data}) ->
-  {datagram, Socket, map_address(Address), Port, Data};
+  {datagram, Socket, to_gleam_address(Address), Port, Data};
 map_udp_message({udp_error, Socket, Error}) ->
   {udp_error, Socket, Error}.

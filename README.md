@@ -28,8 +28,7 @@ pub fn main() {
     |> toss.open()
 
   // Only receive data from the specific host
-  let assert Ok(sender) =
-    toss.connect(socket, toss.Hostname("localhost"), port: port)
+  let assert Ok(sender) = toss.connect_to_host(socket, "localhost", port: port)
 
   // Send a datagram
   let assert Ok(_) = toss.send(sender, <<"Hello, Joe!">>)

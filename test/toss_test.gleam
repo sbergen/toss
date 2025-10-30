@@ -2,9 +2,10 @@ import checkmark
 import envoy
 import gleam/erlang/process
 import gleam/function
+import gleam/int
 import gleeunit
 import simplifile
-import toss.{type Socket, type SocketOptions, Hostname, Ipv4Address, Ipv6Address}
+import toss.{type Socket, type SocketOptions, Ipv4Address, Ipv6Address}
 import toss/example
 
 pub fn main() -> Nil {
@@ -36,7 +37,7 @@ pub fn ipv6_hostname_test() {
     |> toss.use_ipv6()
     |> toss.open
 
-  assert toss.send_to(send_socket, Hostname("localhost"), port, <<"data">>)
+  assert toss.send_to_host(send_socket, "localhost", port, <<"data">>)
     == Ok(Nil)
 
   let assert Ok(#(address, _port, <<"data">>)) =
@@ -54,7 +55,7 @@ pub fn ipv4_hostname_test() {
     |> toss.use_ipv4()
     |> toss.open
 
-  assert toss.send_to(send_socket, Hostname("localhost"), port, <<"data">>)
+  assert toss.send_to_host(send_socket, "localhost", port, <<"data">>)
     == Ok(Nil)
 
   let assert Ok(#(address, _port, <<"data">>)) =
@@ -67,7 +68,7 @@ pub fn ipv4_hostname_test() {
 
 pub fn receive_timeout_test() {
   let #(socket, port) = open(function.identity)
-  let assert Ok(_) = toss.connect(socket, Hostname("localhost"), port)
+  let assert Ok(_) = toss.connect_to_host(socket, "localhost", port)
 
   let assert Error(toss.Timeout) = toss.receive(socket, 100, 1)
 
@@ -79,7 +80,7 @@ pub fn receive_forever_test() {
   let assert Ok(send_socket) =
     toss.new(0)
     |> toss.open
-  let assert Ok(sender) = toss.connect(send_socket, Hostname("localhost"), port)
+  let assert Ok(sender) = toss.connect_to_host(send_socket, "localhost", port)
 
   assert toss.send(sender, <<1>>) == Ok(Nil)
   let assert Ok(#(address, port, data)) = toss.receive_forever(rcv_socket, 100)
@@ -93,7 +94,6 @@ pub fn receive_forever_test() {
 }
 
 // Tests my assumptions and also error handling
-// (Also: Yoshi, the IP can't be just an Int :P)
 pub fn ipv4_over_ipv6_test() {
   let assert Ok(socket) =
     toss.new(0)
@@ -101,7 +101,7 @@ pub fn ipv4_over_ipv6_test() {
     |> toss.open
 
   let assert Error(toss.Eafnosupport) =
-    toss.connect(socket, Ipv4Address(0, 0, 0, 1), 42)
+    toss.connect_to(socket, Ipv4Address(0, 0, 0, 1), 42)
 
   let assert Error(toss.Eafnosupport) =
     toss.send_to(socket, Ipv4Address(0, 0, 0, 1), 42, <<>>)
@@ -109,10 +109,24 @@ pub fn ipv4_over_ipv6_test() {
   toss.close(socket)
 }
 
+pub fn recieve_ipv4_over_ipv6_test() {
+  let #(rcv_socket, port) = open(toss.use_ipv6)
+  let assert Ok(send_socket) = toss.new(0) |> toss.open
+  let assert Ok(sender) =
+    toss.connect_to(send_socket, Ipv4Address(127, 0, 0, 1), port)
+
+  assert toss.send(sender, <<>>) == Ok(Nil)
+
+  let assert Ok(#(Ok(address), _, _)) = toss.receive(rcv_socket, 10, 10)
+  let assert Ipv6Address(0, 0, 0, 0, 0, 0xFFFF, high, low) = address
+  assert high == int.bitwise_shift_left(127, 8)
+  assert low == 1
+}
+
 pub fn message_test() {
   let #(rcv_socket, port) = open(function.identity)
   let assert Ok(send_socket) = toss.new(0) |> toss.open
-  let assert Ok(sender) = toss.connect(send_socket, Hostname("localhost"), port)
+  let assert Ok(sender) = toss.connect_to_host(send_socket, "localhost", port)
   let assert Ok(send_port) = toss.local_port(send_socket)
 
   let selector =

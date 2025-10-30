@@ -15,9 +15,8 @@ pub type Socket
 /// It is still tied to the underlying socket, and is not unique.
 pub type ConnectedSender
 
-/// Address of a peer
-pub type Address {
-  Hostname(String)
+/// IP address of a peer
+pub type IpAddress {
   Ipv4Address(Int, Int, Int, Int)
   Ipv6Address(Int, Int, Int, Int, Int, Int, Int, Int)
 }
@@ -70,11 +69,20 @@ pub fn local_port(socket: Socket) -> Result(Int, Nil) {
   inet_port(socket) |> result.replace_error(Nil)
 }
 
-/// Sends a UDP datagram to the specified destination.
+/// Sends a UDP datagram to the specified destination by IP address.
 @external(erlang, "toss_ffi", "send")
 pub fn send_to(
   socket: Socket,
-  host: Address,
+  host: IpAddress,
+  port: Int,
+  data: BitArray,
+) -> Result(Nil, Error)
+
+/// Sends a UDP datagram to the specified destination by hostname.
+@external(erlang, "toss_ffi", "send")
+pub fn send_to_host(
+  socket: Socket,
+  host: String,
   port: Int,
   data: BitArray,
 ) -> Result(Nil, Error)
@@ -92,7 +100,7 @@ pub fn receive(
   socket: Socket,
   max_length max_length: Int,
   timeout_milliseconds timeout: Int,
-) -> Result(#(Result(Address, Nil), Int, BitArray), Error)
+) -> Result(#(Result(IpAddress, Nil), Int, BitArray), Error)
 
 /// Receives a UDP datagram from the socket, without a timeout.
 /// See [`receive`](#receive) for details.
@@ -100,18 +108,26 @@ pub fn receive(
 pub fn receive_forever(
   socket: Socket,
   max_length max_length: Int,
-) -> Result(#(Result(Address, Nil), Int, BitArray), Error)
+) -> Result(#(Result(IpAddress, Nil), Int, BitArray), Error)
 
 /// Modifies the socket to only receive data from the specified source.
 /// Other messages are discarded on arrival by the OS protocol stack.
 /// Returns a handle to the socket,
 /// which can be used to send data without specifying the destination every time.
-/// Note that multiple calls to `connect` will override any previous calls -
+/// Note that multiple calls to `connect_to` will override any previous calls -
 /// all previously returned senders will also change behaviour.
 @external(erlang, "toss_ffi", "connect")
-pub fn connect(
+pub fn connect_to(
   socket: Socket,
-  host: Address,
+  host: IpAddress,
+  port port: Int,
+) -> Result(ConnectedSender, Error)
+
+/// Like `connect_to`, but uses a host name instead of an IP address.
+@external(erlang, "toss_ffi", "connect")
+pub fn connect_to_host(
+  socket: Socket,
+  host: String,
   port port: Int,
 ) -> Result(ConnectedSender, Error)
 
@@ -124,7 +140,7 @@ pub type UdpMessage {
   /// An incoming UDP datagram
   Datagram(
     socket: Socket,
-    host: Result(Address, Nil),
+    host: Result(IpAddress, Nil),
     peer_port: Int,
     data: BitArray,
   )
