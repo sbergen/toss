@@ -147,6 +147,7 @@ pub fn recieve_ipv4_over_ipv6_test() {
 
 pub fn multicast_test() {
   let mcast_addr = Ipv4Address(224, 0, 0, 42)
+  let local_addr = Ipv4Address(0, 0, 0, 0)
 
   let apply_options = fn(opts) {
     toss.reuse_address(opts)
@@ -154,11 +155,7 @@ pub fn multicast_test() {
   }
 
   let #(rcv_socket, port) = open(apply_options)
-  assert toss.join_multicast_group(
-      rcv_socket,
-      mcast_addr,
-      Ipv4Address(0, 0, 0, 0),
-    )
+  assert toss.join_multicast_group(rcv_socket, mcast_addr, local_addr)
     == Ok(Nil)
 
   let assert Ok(send_socket) =
@@ -168,17 +165,25 @@ pub fn multicast_test() {
 
   assert toss.send_to(send_socket, mcast_addr, port, <<"hi!">>) == Ok(Nil)
   let assert Ok(#(_, _, <<"hi!">>)) = toss.receive(rcv_socket, 8, 10)
+    as "receiving multicast socket"
+  let assert Ok(#(_, _, <<"hi!">>)) = toss.receive(send_socket, 8, 10)
+    as "loopback multicast socket"
 
-  assert toss.leave_multicast_group(
-      rcv_socket,
-      mcast_addr,
-      Ipv4Address(0, 0, 0, 0),
-    )
+  assert toss.leave_multicast_group(rcv_socket, mcast_addr, local_addr)
     == Ok(Nil)
 
   assert toss.send_to(send_socket, mcast_addr, port, <<"hi!">>) == Ok(Nil)
   let assert Error(toss.Timeout) = toss.receive(rcv_socket, 8, 10)
-    as "We've left the multicast group"
+    as "we've left the multicast group"
+
+  // I don't know exactly why this the rejoin is needed:
+  // I couldn't get this case to fail otherwise.
+  assert toss.join_multicast_group(rcv_socket, mcast_addr, local_addr)
+    == Ok(Nil)
+  assert toss.loop_mutlicast(send_socket, False) == Ok(Nil)
+  assert toss.send_to(send_socket, mcast_addr, port, <<"hi!">>) == Ok(Nil)
+  let assert Error(toss.Timeout) = toss.receive(send_socket, 8, 10)
+    as "loopback multicast disabled"
 
   toss.close(rcv_socket)
   toss.close(send_socket)
@@ -192,7 +197,7 @@ pub fn message_test() {
 
   let selector =
     toss.select_udp_messages(process.new_selector(), function.identity)
-  toss.receive_next_datagram_as_message(rcv_socket)
+  assert toss.receive_next_datagram_as_message(rcv_socket) == Ok(Nil)
 
   assert toss.send(sender, <<1>>) == Ok(Nil)
   assert toss.send(sender, <<2>>) == Ok(Nil)
@@ -209,7 +214,7 @@ pub fn message_test() {
   let assert Error(Nil) = process.selector_receive(selector, 1)
 
   // Receive the second datagram
-  toss.receive_next_datagram_as_message(rcv_socket)
+  assert toss.receive_next_datagram_as_message(rcv_socket) == Ok(Nil)
   let assert Ok(msg) = process.selector_receive(selector, 1)
   let assert toss.Datagram(_, _, _, <<2>>) = msg
 

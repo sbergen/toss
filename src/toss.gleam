@@ -30,8 +30,6 @@ pub fn ip_to_string(ip: IpAddress) -> String
 pub fn prase_ip(address: String) -> Result(IpAddress, Nil)
 
 /// The set of options used to open a socket.
-/// (Mostly serves forward compatibility purposes at the moment,
-/// as only the port and IP version can be specified.)
 pub opaque type SocketOptions {
   SocketOptions(local_port: Int, options: List(GenUdpOption))
 }
@@ -58,6 +56,8 @@ pub fn use_ipv6(options: SocketOptions) -> SocketOptions {
   add_option(options, Inet6)
 }
 
+/// If the local host has multiple interfaces,
+/// specifies which one to use by IP address.
 pub fn using_interface(options: SocketOptions, ip: IpAddress) -> SocketOptions {
   add_option(options, Ip(to_erlang_ip(ip)))
 }
@@ -92,6 +92,7 @@ pub fn local_port(socket: Socket) -> Result(Int, Nil) {
   inet_port(socket) |> result.replace_error(Nil)
 }
 
+/// Joins a multicast group on the given local interface.
 pub fn join_multicast_group(
   socket: Socket,
   multicast_address: IpAddress,
@@ -105,6 +106,7 @@ pub fn join_multicast_group(
   ])
 }
 
+/// Leaves a multicast group on the given local interface.
 pub fn leave_multicast_group(
   socket: Socket,
   multicast_address: IpAddress,
@@ -116,6 +118,11 @@ pub fn leave_multicast_group(
       to_erlang_ip(interface_address),
     )),
   ])
+}
+
+/// Sets whether sent multicast packets are looped back to the socket.
+pub fn loop_mutlicast(socket: Socket, loop: Bool) -> Result(Nil, Error) {
+  set_socket_options(socket, [MulticastLoop(loop)])
 }
 
 /// Sends a UDP datagram to the specified destination by IP address.
@@ -237,9 +244,8 @@ pub fn select_udp_messages(
 /// This is intended to provide backpressure to the OS socket,
 /// instead of flooding the inbox on the Erlang side,
 /// which could happen if switching to full active mode.
-pub fn receive_next_datagram_as_message(socket: Socket) -> Nil {
+pub fn receive_next_datagram_as_message(socket: Socket) -> Result(Nil, Error) {
   set_socket_options(socket, [Active(active_once())])
-  Nil
 }
 
 /// any() from Erlang, or I don't care about the return value
@@ -261,6 +267,7 @@ type GenUdpOption {
   Reuseport(Bool)
   AddMembership(#(InetAddress, InetAddress))
   DropMembership(#(InetAddress, InetAddress))
+  MulticastLoop(Bool)
   Ip(InetAddress)
   Inet
   Inet6
