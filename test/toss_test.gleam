@@ -46,10 +46,10 @@ pub fn ip_to_string_test() {
 }
 
 pub fn parse_ip_test() {
-  assert toss.prase_ip("1.2.3.4") == Ok(Ipv4Address(1, 2, 3, 4))
-  assert toss.prase_ip("1:23:45:67:89:ab:cd:ef")
+  assert toss.parse_ip("1.2.3.4") == Ok(Ipv4Address(1, 2, 3, 4))
+  assert toss.parse_ip("1:23:45:67:89:ab:cd:ef")
     == Ok(Ipv6Address(0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef))
-  assert toss.prase_ip("not-an-ip") == Error(Nil)
+  assert toss.parse_ip("not-an-ip") == Error(Nil)
 }
 
 pub fn ipv6_hostname_test() {

@@ -27,7 +27,7 @@ pub fn ip_to_string(ip: IpAddress) -> String
 
 /// Tries to parse an IP address from a string.
 @external(erlang, "toss_ffi", "parse_ip")
-pub fn prase_ip(address: String) -> Result(IpAddress, Nil)
+pub fn parse_ip(address: String) -> Result(IpAddress, Nil)
 
 /// The set of options used to open a socket.
 pub opaque type SocketOptions {
