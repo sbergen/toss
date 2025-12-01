@@ -1,5 +1,5 @@
 name = "toss"
-version = "1.0.0-rc2"
+version = "1.0.0-rc3"
 
 description = "A UDP client for Gleam"
 licences = ["Apache-2.0"]
