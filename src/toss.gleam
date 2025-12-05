@@ -4,6 +4,7 @@ import gleam/dynamic.{type Dynamic}
 import gleam/erlang/atom
 import gleam/erlang/process
 import gleam/result
+import glip.{type ExternalIpAddress, type IpAddress, to_external_ip}
 
 /// A UDP socket, used to send and receive UDP datagrams.
 pub type Socket
@@ -14,20 +15,6 @@ pub type Socket
 /// [`connect`](#connect) has been successfully called _at least once_.
 /// It is still tied to the underlying socket, and is not unique.
 pub type ConnectedSender
-
-/// IP address of a peer
-pub type IpAddress {
-  Ipv4Address(Int, Int, Int, Int)
-  Ipv6Address(Int, Int, Int, Int, Int, Int, Int, Int)
-}
-
-/// Converts an IP address to a string.
-@external(erlang, "toss_ffi", "ip_to_string")
-pub fn ip_to_string(ip: IpAddress) -> String
-
-/// Tries to parse an IP address from a string.
-@external(erlang, "toss_ffi", "parse_ip")
-pub fn parse_ip(address: String) -> Result(IpAddress, Nil)
 
 /// The set of options used to open a socket.
 pub opaque type SocketOptions {
@@ -59,7 +46,7 @@ pub fn use_ipv6(options: SocketOptions) -> SocketOptions {
 /// If the local host has multiple interfaces,
 /// specifies which one to use by IP address.
 pub fn using_interface(options: SocketOptions, ip: IpAddress) -> SocketOptions {
-  add_option(options, Ip(to_erlang_ip(ip)))
+  add_option(options, Ip(to_external_ip(ip)))
 }
 
 /// Allows reusing an already open local address and port
@@ -100,8 +87,8 @@ pub fn join_multicast_group(
 ) -> Result(Nil, Error) {
   set_socket_options(socket, [
     AddMembership(#(
-      to_erlang_ip(multicast_address),
-      to_erlang_ip(interface_address),
+      to_external_ip(multicast_address),
+      to_external_ip(interface_address),
     )),
   ])
 }
@@ -114,8 +101,8 @@ pub fn leave_multicast_group(
 ) -> Result(Nil, Error) {
   set_socket_options(socket, [
     DropMembership(#(
-      to_erlang_ip(multicast_address),
-      to_erlang_ip(interface_address),
+      to_external_ip(multicast_address),
+      to_external_ip(interface_address),
     )),
   ])
 }
@@ -257,18 +244,15 @@ type ModeValue {
 
 type ActiveValue
 
-/// A native Erlang IP address tuple
-type InetAddress
-
 type GenUdpOption {
   Active(ActiveValue)
   Mode(ModeValue)
   Reuseaddr(Bool)
   Reuseport(Bool)
-  AddMembership(#(InetAddress, InetAddress))
-  DropMembership(#(InetAddress, InetAddress))
+  AddMembership(#(ExternalIpAddress, ExternalIpAddress))
+  DropMembership(#(ExternalIpAddress, ExternalIpAddress))
   MulticastLoop(Bool)
-  Ip(InetAddress)
+  Ip(ExternalIpAddress)
   Inet
   Inet6
 }
@@ -287,9 +271,6 @@ fn gen_udp_open(port: Int, opts: List(GenUdpOption)) -> Result(Socket, Error)
 
 @external(erlang, "gen_udp", "close")
 fn gen_udp_close(socket: Socket) -> Any
-
-@external(erlang, "toss_ffi", "from_gleam_address")
-fn to_erlang_ip(ip: IpAddress) -> InetAddress
 
 @external(erlang, "toss_ffi", "passive")
 fn passive() -> ActiveValue

@@ -2,10 +2,11 @@ import checkmark
 import envoy
 import gleam/erlang/process
 import gleam/function
-import gleam/int
+import gleam/result
 import gleeunit
+import glip.{Ipv4, Ipv6}
 import simplifile
-import toss.{type Socket, type SocketOptions, Ipv4Address, Ipv6Address}
+import toss.{type Socket, type SocketOptions}
 import toss/example
 
 pub fn main() -> Nil {
@@ -30,28 +31,6 @@ pub fn check_example_test() {
     == Ok(Nil)
 }
 
-pub fn ip_to_string_test() {
-  assert toss.ip_to_string(Ipv4Address(1, 2, 3, 4)) == "1.2.3.4"
-  assert toss.ip_to_string(Ipv6Address(
-      0x01,
-      0x23,
-      0x45,
-      0x67,
-      0x89,
-      0xab,
-      0xcd,
-      0xef,
-    ))
-    == "1:23:45:67:89:ab:cd:ef"
-}
-
-pub fn parse_ip_test() {
-  assert toss.parse_ip("1.2.3.4") == Ok(Ipv4Address(1, 2, 3, 4))
-  assert toss.parse_ip("1:23:45:67:89:ab:cd:ef")
-    == Ok(Ipv6Address(0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef))
-  assert toss.parse_ip("not-an-ip") == Error(Nil)
-}
-
 pub fn ipv6_hostname_test() {
   let #(rcv_socket, port) = open(toss.use_ipv6)
   let assert Ok(send_socket) =
@@ -62,9 +41,9 @@ pub fn ipv6_hostname_test() {
   assert toss.send_to_host(send_socket, "localhost", port, <<"data">>)
     == Ok(Nil)
 
-  let assert Ok(#(address, _port, <<"data">>)) =
+  let assert Ok(#(Ok(address), _port, <<"data">>)) =
     toss.receive(rcv_socket, 100, 10)
-  let assert Ok(Ipv6Address(..)) = address
+  assert glip.address_family(address) == Ipv6
 
   toss.close(rcv_socket)
   toss.close(send_socket)
@@ -80,9 +59,9 @@ pub fn ipv4_hostname_test() {
   assert toss.send_to_host(send_socket, "localhost", port, <<"data">>)
     == Ok(Nil)
 
-  let assert Ok(#(address, _port, <<"data">>)) =
+  let assert Ok(#(Ok(address), _port, <<"data">>)) =
     toss.receive(rcv_socket, 100, 10)
-  let assert Ok(Ipv4Address(..)) = address
+  assert glip.address_family(address) == Ipv4
 
   toss.close(rcv_socket)
   toss.close(send_socket)
@@ -105,9 +84,10 @@ pub fn receive_forever_test() {
   let assert Ok(sender) = toss.connect_to_host(send_socket, "localhost", port)
 
   assert toss.send(sender, <<1>>) == Ok(Nil)
-  let assert Ok(#(address, port, data)) = toss.receive_forever(rcv_socket, 100)
+  let assert Ok(#(Ok(address), port, data)) =
+    toss.receive_forever(rcv_socket, 100)
 
-  let assert Ok(Ipv4Address(_, _, _, _)) = address
+  assert glip.address_family(address) == Ipv4
   assert Ok(port) == toss.local_port(send_socket)
   assert data == <<1>>
 
@@ -122,32 +102,29 @@ pub fn ipv4_over_ipv6_test() {
     |> toss.use_ipv6()
     |> toss.open
 
-  let assert Error(toss.Eafnosupport) =
-    toss.connect_to(socket, Ipv4Address(0, 0, 0, 1), 42)
+  let ip = coerce_ip("0.0.0.1")
 
-  let assert Error(toss.Eafnosupport) =
-    toss.send_to(socket, Ipv4Address(0, 0, 0, 1), 42, <<>>)
+  let assert Error(toss.Eafnosupport) = toss.connect_to(socket, ip, 42)
+  let assert Error(toss.Eafnosupport) = toss.send_to(socket, ip, 42, <<>>)
 
   toss.close(socket)
 }
 
 pub fn recieve_ipv4_over_ipv6_test() {
+  let ip = coerce_ip("127.0.0.1")
   let #(rcv_socket, port) = open(toss.use_ipv6)
   let assert Ok(send_socket) = toss.new(0) |> toss.open
-  let assert Ok(sender) =
-    toss.connect_to(send_socket, Ipv4Address(127, 0, 0, 1), port)
+  let assert Ok(sender) = toss.connect_to(send_socket, ip, port)
 
   assert toss.send(sender, <<>>) == Ok(Nil)
 
   let assert Ok(#(Ok(address), _, _)) = toss.receive(rcv_socket, 10, 10)
-  let assert Ipv6Address(0, 0, 0, 0, 0, 0xFFFF, high, low) = address
-  assert high == int.bitwise_shift_left(127, 8)
-  assert low == 1
+  assert glip.ip_to_string(address) == "::ffff:127.0.0.1"
 }
 
 pub fn multicast_test() {
-  let mcast_addr = Ipv4Address(224, 0, 0, 42)
-  let local_addr = Ipv4Address(0, 0, 0, 0)
+  let mcast_addr = coerce_ip("224.0.0.42")
+  let local_addr = coerce_ip("0.0.0.0")
 
   let apply_options = fn(opts) {
     toss.reuse_address(opts)
@@ -204,9 +181,9 @@ pub fn message_test() {
 
   // Receive first datagram
   let assert Ok(msg) = process.selector_receive(selector, 1)
-  let assert toss.Datagram(socket, address, port, data) = msg
+  let assert toss.Datagram(socket, Ok(address), port, data) = msg
   assert socket == rcv_socket
-  let assert Ok(Ipv4Address(_, _, _, _)) = address
+  assert glip.address_family(address) == Ipv4
   assert port == send_port
   assert data == <<1>>
 
@@ -226,4 +203,8 @@ fn open(set_opts: fn(SocketOptions) -> SocketOptions) -> #(Socket, Int) {
   let assert Ok(socket) = toss.new(0) |> set_opts |> toss.open()
   let assert Ok(port) = toss.local_port(socket)
   #(socket, port)
+}
+
+fn coerce_ip(address: String) {
+  glip.parse_ip(address) |> result.lazy_unwrap(fn() { panic as "Not an IP!" })
 }
