@@ -1,7 +1,7 @@
 -module(toss_ffi).
 
 -export([active_once/0, passive/0, connect/3, recv/2, recv/3, send/2, send/4,
-         map_udp_message/1, setopts/2]).
+         map_udp_message/1, setopts/2, open/2]).
 
 % Enable inlining, as all the functions are very small.
 -compile(inline).
@@ -18,6 +18,14 @@ setopts(Socket, Opts) ->
       {ok, nil};
     Error ->
       Error
+  end.
+
+open(Port, Opts) ->
+  try
+    gen_udp:open(Port, Opts)
+  catch
+    exit:badarg ->
+      {error, bad_argument}
   end.
 
 connect(Socket, Address, Port) ->

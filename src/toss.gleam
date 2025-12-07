@@ -266,11 +266,11 @@ fn set_socket_options(
 @external(erlang, "inet", "port")
 fn inet_port(socket: Socket) -> Result(Int, Any)
 
-@external(erlang, "gen_udp", "open")
-fn gen_udp_open(port: Int, opts: List(GenUdpOption)) -> Result(Socket, Error)
-
 @external(erlang, "gen_udp", "close")
 fn gen_udp_close(socket: Socket) -> Any
+
+@external(erlang, "toss_ffi", "open")
+fn gen_udp_open(port: Int, opts: List(GenUdpOption)) -> Result(Socket, Error)
 
 @external(erlang, "toss_ffi", "passive")
 fn passive() -> ActiveValue
@@ -297,6 +297,9 @@ pub type Error {
   NotOwner
   /// Operation timed out
   Timeout
+  /// gen_udp threw a bad argument exception. Probably an invalid port number.
+  BadArgument
+
   // https://www.erlang.org/doc/maninet#type-posix
   /// Address already in use
   Eaddrinuse
@@ -460,6 +463,7 @@ pub fn describe_error(error: Error) -> String {
   case error {
     NotOwner -> "Socket not owned by the process trying to use it"
     Timeout -> "Operation timed out"
+    BadArgument -> "Bad argument (probably invalid port number)"
     Eaddrinuse -> "Address already in use"
     Eaddrnotavail -> "Cannot assign requested address"
     Eafnosupport -> "Address family not supported"

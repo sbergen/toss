@@ -199,6 +199,12 @@ pub fn message_test() {
   toss.close(send_socket)
 }
 
+pub fn invalid_port_test() {
+  assert toss.new(123_456)
+    |> toss.open()
+    == Error(toss.BadArgument)
+}
+
 fn open(set_opts: fn(SocketOptions) -> SocketOptions) -> #(Socket, Int) {
   let assert Ok(socket) = toss.new(0) |> set_opts |> toss.open()
   let assert Ok(port) = toss.local_port(socket)
